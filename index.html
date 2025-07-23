@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporizador de Foco e Tarefas</title>
+    <!-- Incluindo Tailwind CSS para estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluindo Tone.js para áudio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <!-- Incluindo jsPDF e jsPDF-AutoTable para exportar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Animação de flash para o alerta visual */
+        @keyframes screenFlash {
+            0% { background-color: #111827; } /* Cor de fundo original */
+            50% { background-color: #4f46e5; } /* Cor do flash */
+            100% { background-color: #111827; }
+        }
+        .flash-animation {
+            animation: screenFlash 0.5s ease-in-out;
+        }
+        /* Garantir que o container da lista ocupe a altura */
+        #task-list-container {
+            display: flex;
+            flex-direction: column;
+        }
+        #task-list {
+            flex-grow: 1;
+        }
+        .task-completed span {
+            text-decoration: line-through;
+            color: #6b7280; /* gray-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center transition-colors duration-300 overflow-x-hidden">
+
+    <div id="app-container" class="w-full max-w-6xl mx-auto p-4 md:p-8">
+
+        <!-- Cabeçalho -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-indigo-400">Temporizador de Foco</h1>
+            <p class="text-gray-400 mt-2">Concentre-se em uma tarefa de cada vez.</p>
+        </div>
+
+        <!-- Conteúdo principal com duas colunas -->
+        <div class="flex flex-col md:flex-row gap-8">
+
+            <!-- Coluna da Esquerda: Lista de Tarefas -->
+            <div class="w-full md:w-1/3">
+                <div id="task-list-container" class="bg-gray-800 p-6 rounded-xl shadow-lg hidden h-full">
+                     <h2 class="text-xl font-semibold mb-4 text-gray-300">Sua Lista de Foco</h2>
+                     <ul id="task-list" class="space-y-3">
+                        <!-- As tarefas serão adicionadas aqui via JS -->
+                     </ul>
+                     <button id="finish-list-btn" class="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 shadow-lg text-lg hidden">
+                        Concluir e Iniciar
+                     </button>
+                     <div id="download-buttons" class="mt-4 flex flex-col sm:flex-row gap-2 hidden">
+                        <button id="download-json-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">Baixar JSON</button>
+                        <button id="download-pdf-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">Baixar PDF</button>
+                     </div>
+                </div>
+            </div>
+
+            <!-- Coluna da Direita: Formulário, Temporizador ou Resumo -->
+            <div class="w-full md:w-2/3">
+                <!-- Seção do Formulário de Input -->
+                <div id="input-section" class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-300">Adicionar Nova Tarefa</h2>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <input type="text" id="task-name" placeholder="Nome da tarefa..." class="flex-grow bg-gray-700 text-white placeholder-gray-400 border-2 border-gray-600 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+                        <input type="number" id="task-duration" placeholder="Duração (min)" min="1" class="w-full sm:w-32 bg-gray-700 text-white placeholder-gray-400 border-2 border-gray-600 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+                        <button id="add-task-btn" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 shadow-md">Adicionar</button>
+                    </div>
+                </div>
+
+                <!-- Seção do Temporizador (inicialmente oculta) -->
+                <div id="timer-section" class="hidden w-full h-[50vh] md:h-full flex-col items-center justify-center text-center p-8 bg-gray-800 rounded-2xl shadow-2xl min-h-[300px]">
+                    <h2 id="current-task-name" class="text-2xl md:text-4xl font-bold text-indigo-300 mb-4"></h2>
+                    <h1 id="timer-display" class="text-7xl md:text-9xl font-black text-white tracking-tighter"></h1>
+                    <div id="timer-controls" class="mt-8 flex flex-wrap justify-center gap-4">
+                        <button id="pause-resume-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105">Pausar</button>
+                        <button id="prev-task-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105">Anterior</button>
+                        <button id="skip-task-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105">Pular</button>
+                        <button id="next-task-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105">Concluir</button>
+                        <button id="edit-list-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 mt-4 sm:mt-0">Editar Lista</button>
+                    </div>
+                </div>
+                
+                <!-- Seção de Resumo (inicialmente oculta) -->
+                <div id="summary-section" class="hidden w-full h-[50vh] md:h-full flex-col items-center justify-center text-center p-8 bg-gray-800 rounded-2xl shadow-2xl min-h-[300px]">
+                    <h2 class="text-3xl md:text-4xl font-bold text-green-400 mb-6">Parabéns, você concluiu!</h2>
+                    <div class="space-y-4 text-lg">
+                        <p>Tempo total estimado: <span id="total-estimated-time" class="font-bold text-xl text-indigo-300"></span></p>
+                        <p>Tempo total real: <span id="total-actual-time" class="font-bold text-xl text-indigo-300"></span></p>
+                    </div>
+                    <button id="reset-btn" class="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105">Criar Nova Lista</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notificação Toast -->
+    <div id="toast" class="fixed top-5 right-5 bg-red-600 text-white py-3 px-5 rounded-xl shadow-lg transform translate-x-[120%] transition-transform duration-500 ease-in-out z-50">
+        <p id="toast-message"></p>
+    </div>
+
+    <script>
+        // Elementos da DOM
+        const inputSection = document.getElementById('input-section');
+        const timerSection = document.getElementById('timer-section');
+        const summarySection = document.getElementById('summary-section');
+        const taskNameInput = document.getElementById('task-name');
+        const taskDurationInput = document.getElementById('task-duration');
+        const addTaskBtn = document.getElementById('add-task-btn');
+        const taskListContainer = document.getElementById('task-list-container');
+        const taskList = document.getElementById('task-list');
+        const finishListBtn = document.getElementById('finish-list-btn');
+        const currentTaskNameDisplay = document.getElementById('current-task-name');
+        const timerDisplay = document.getElementById('timer-display');
+        const body = document.body;
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        const prevTaskBtn = document.getElementById('prev-task-btn');
+        const nextTaskBtn = document.getElementById('next-task-btn');
+        const editListBtn = document.getElementById('edit-list-btn');
+        const pauseResumeBtn = document.getElementById('pause-resume-btn');
+        const skipTaskBtn = document.getElementById('skip-task-btn');
+        const downloadButtons = document.getElementById('download-buttons');
+        const downloadJsonBtn = document.getElementById('download-json-btn');
+        const downloadPdfBtn = document.getElementById('download-pdf-btn');
+        const totalEstimatedTimeEl = document.getElementById('total-estimated-time');
+        const totalActualTimeEl = document.getElementById('total-actual-time');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // Estado da aplicação
+        let tasks = [];
+        let currentTaskIndex = 0;
+        let timerInterval = null;
+        let synth = null;
+        let toastTimeout = null;
+        let isPaused = false;
+        let timeRemainingOnPause = 0;
+
+        // Função para mostrar notificação
+        function showToast(message) {
+            clearTimeout(toastTimeout);
+            toastMessage.textContent = message;
+            toast.classList.remove('translate-x-[120%]');
+            toast.classList.add('translate-x-0');
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('translate-x-0');
+                toast.classList.add('translate-x-[120%]');
+            }, 3000);
+        }
+
+        // Função para formatar o tempo
+        function formatTime(seconds, showSign = true) {
+            const isNegative = seconds < 0;
+            const absSeconds = Math.abs(seconds);
+            const mins = Math.floor(absSeconds / 60);
+            const secs = absSeconds % 60;
+            const sign = showSign && isNegative ? '-' : '';
+            return `${sign}${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        // Função para renderizar a lista de tarefas
+        function renderTasks() {
+            taskList.innerHTML = '';
+            if (tasks.length > 0) {
+                taskListContainer.classList.remove('hidden');
+                finishListBtn.classList.remove('hidden');
+                downloadButtons.classList.remove('hidden');
+            } else {
+                taskListContainer.classList.add('hidden');
+                downloadButtons.classList.add('hidden');
+            }
+
+            tasks.forEach((task, index) => {
+                const li = document.createElement('li');
+                li.className = 'bg-gray-700 p-3 rounded-lg flex justify-between items-center transition-colors duration-300';
+                li.dataset.taskIndex = index;
+                if (task.completed) {
+                    li.classList.add('task-completed');
+                }
+                li.innerHTML = `
+                    <span>${task.name} - ${task.duration} min</span>
+                    <button data-index="${index}" class="remove-btn text-red-400 hover:text-red-600 font-bold text-xl">&times;</button>
+                `;
+                taskList.appendChild(li);
+            });
+        }
+
+        // Função para adicionar uma tarefa
+        function addTask() {
+            const name = taskNameInput.value.trim();
+            const duration = parseInt(taskDurationInput.value, 10);
+
+            if (name && duration > 0) {
+                tasks.push({ name, duration, completed: false, startTime: null, actualDuration: null });
+                renderTasks();
+                taskNameInput.value = '';
+                taskDurationInput.value = '';
+                taskNameInput.focus();
+            } else {
+                showToast('Por favor, insira um nome e uma duração válida.');
+            }
+        }
+        
+        // Função para remover uma tarefa
+        function removeTask(index) {
+            tasks.splice(index, 1);
+            renderTasks();
+        }
+
+        function startTimerInterval(timeInSeconds) {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeInSeconds--;
+                timeRemainingOnPause = timeInSeconds;
+                timerDisplay.textContent = formatTime(timeInSeconds);
+
+                if (timeInSeconds < 0) {
+                    timerDisplay.classList.add('text-red-500');
+                }
+
+                if (timeInSeconds === -1) {
+                    triggerAlert();
+                }
+            }, 1000);
+        }
+
+        // Função para iniciar o temporizador para uma tarefa
+        function startTimerForTask(index) {
+            isPaused = false;
+            pauseResumeBtn.textContent = 'Pausar';
+            
+            document.querySelectorAll('#task-list li').forEach(li => li.classList.remove('bg-indigo-600', 'text-white', 'font-bold'));
+            const currentLi = document.querySelector(`#task-list li[data-task-index='${index}']`);
+            if (currentLi) currentLi.classList.add('bg-indigo-600', 'text-white', 'font-bold');
+
+            const task = tasks[index];
+            if (!task.startTime) {
+                task.startTime = Date.now();
+            }
+            
+            currentTaskNameDisplay.textContent = task.name;
+            let timeInSeconds = task.duration * 60;
+
+            timerDisplay.textContent = formatTime(timeInSeconds);
+            timerDisplay.classList.remove('text-red-500');
+            
+            startTimerInterval(timeInSeconds);
+        }
+        
+        // Função para mostrar o resumo
+        function showSummary() {
+            timerSection.classList.add('hidden');
+            summarySection.classList.remove('hidden');
+            summarySection.classList.add('flex');
+
+            const totalEstimated = tasks.reduce((acc, task) => acc + task.duration * 60, 0);
+            const totalActual = tasks.reduce((acc, task) => acc + (task.actualDuration || 0), 0);
+
+            totalEstimatedTimeEl.textContent = formatTime(totalEstimated, false);
+            totalActualTimeEl.textContent = formatTime(totalActual, false);
+        }
+
+        // Função para disparar os alertas
+        function triggerAlert() {
+            if (synth) synth.triggerAttackRelease("C5", "0.5s");
+            body.classList.add('flash-animation');
+            setTimeout(() => body.classList.remove('flash-animation'), 500);
+        }
+        
+        // Função para resetar a aplicação
+        function resetApp() {
+            tasks = [];
+            currentTaskIndex = 0;
+            renderTasks();
+            summarySection.classList.add('hidden');
+            inputSection.classList.remove('hidden');
+        }
+
+        // Funções de Download
+        function downloadJSON() {
+            const date = new Date().toLocaleDateString('pt-BR');
+            const data = {
+                data: date,
+                tarefas: tasks.map(t => ({
+                    tarefa: t.name,
+                    tempo_estimado_min: t.duration,
+                    tempo_real_s: t.actualDuration,
+                    concluida: t.completed
+                }))
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", `tarefas_${date.replace(/\//g, '-')}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const date = new Date().toLocaleDateString('pt-BR');
+
+            doc.text(`Relatório de Tarefas - ${date}`, 14, 16);
+            
+            const tableColumn = ["Tarefa", "Estimado (min)", "Real (s)", "Status"];
+            const tableRows = [];
+
+            tasks.forEach(task => {
+                const taskData = [
+                    task.name,
+                    task.duration,
+                    task.actualDuration ? formatTime(task.actualDuration, false) : 'N/A',
+                    task.completed ? 'Concluída' : 'Pendente'
+                ];
+                tableRows.push(taskData);
+            });
+
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 20,
+            });
+            
+            const totalEstimated = tasks.reduce((acc, task) => acc + task.duration * 60, 0);
+            const totalActual = tasks.reduce((acc, task) => acc + (task.actualDuration || 0), 0);
+            
+            const finalY = doc.lastAutoTable.finalY || 20;
+            doc.text(`Total Estimado: ${formatTime(totalEstimated, false)}`, 14, finalY + 10);
+            doc.text(`Total Real: ${formatTime(totalActual, false)}`, 14, finalY + 17);
+
+            doc.save(`tarefas_${date.replace(/\//g, '-')}.pdf`);
+        }
+
+        // Event Listeners
+        addTaskBtn.addEventListener('click', addTask);
+        taskNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTask(); });
+        taskDurationInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTask(); });
+        taskList.addEventListener('click', (e) => { if (e.target.classList.contains('remove-btn')) removeTask(parseInt(e.target.dataset.index)); });
+        resetBtn.addEventListener('click', resetApp);
+        downloadJsonBtn.addEventListener('click', downloadJSON);
+        downloadPdfBtn.addEventListener('click', downloadPDF);
+
+        finishListBtn.addEventListener('click', async () => {
+            if (tasks.length === 0) {
+                showToast('Adicione pelo menos uma tarefa para começar.');
+                return;
+            }
+            try {
+                await Tone.start();
+                synth = new Tone.Synth().toDestination();
+                inputSection.classList.add('hidden');
+                timerSection.classList.remove('hidden');
+                timerSection.classList.add('flex');
+                finishListBtn.classList.add('hidden');
+                currentTaskIndex = tasks.findIndex(task => !task.completed);
+                if (currentTaskIndex === -1) currentTaskIndex = 0;
+                startTimerForTask(currentTaskIndex);
+            } catch(e) { showToast("Erro ao iniciar o áudio."); }
+        });
+
+        pauseResumeBtn.addEventListener('click', () => {
+            if (isPaused) {
+                isPaused = false;
+                pauseResumeBtn.textContent = 'Pausar';
+                startTimerInterval(timeRemainingOnPause);
+            } else {
+                isPaused = true;
+                pauseResumeBtn.textContent = 'Continuar';
+                clearInterval(timerInterval);
+            }
+        });
+
+        nextTaskBtn.addEventListener('click', () => {
+            if (currentTaskIndex >= tasks.length) return;
+
+            if (!tasks[currentTaskIndex].completed) {
+                tasks[currentTaskIndex].actualDuration = Math.round((Date.now() - tasks[currentTaskIndex].startTime) / 1000);
+                tasks[currentTaskIndex].completed = true;
+                renderTasks();
+            }
+
+            const nextIndex = tasks.findIndex((task, index) => index > currentTaskIndex && !task.completed);
+
+            if (nextIndex !== -1) {
+                currentTaskIndex = nextIndex;
+                startTimerForTask(currentTaskIndex);
+            } else {
+                if (tasks.every(t => t.completed)) {
+                    showSummary();
+                } else {
+                    showToast("Não há mais tarefas pendentes à frente.");
+                }
+            }
+        });
+
+        skipTaskBtn.addEventListener('click', () => {
+            const nextIndex = tasks.findIndex((task, index) => index > currentTaskIndex && !task.completed);
+            if (nextIndex !== -1) {
+                currentTaskIndex = nextIndex;
+                startTimerForTask(currentTaskIndex);
+            } else {
+                showToast("Não há mais tarefas para pular.");
+            }
+        });
+
+        prevTaskBtn.addEventListener('click', () => {
+            let prevIndex = -1;
+            for (let i = currentTaskIndex - 1; i >= 0; i--) {
+                if (!tasks[i].completed) {
+                    prevIndex = i;
+                    break;
+                }
+            }
+            if (prevIndex !== -1) {
+                currentTaskIndex = prevIndex;
+                startTimerForTask(currentTaskIndex);
+            } else {
+                showToast("Nenhuma tarefa anterior pendente.");
+            }
+        });
+
+        editListBtn.addEventListener('click', () => {
+            clearInterval(timerInterval);
+            timerSection.classList.add('hidden');
+            summarySection.classList.add('hidden');
+            inputSection.classList.remove('hidden');
+            if (tasks.length > 0) finishListBtn.classList.remove('hidden');
+            document.querySelectorAll('#task-list li').forEach(li => li.classList.remove('bg-indigo-600', 'text-white', 'font-bold'));
+        });
+
+    </script>
+</body>
+</html>
